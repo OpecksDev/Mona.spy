@@ -63,7 +63,7 @@ fn get_cell_content<'a>(nodes: &'a Vec<Node>) -> Vec<&'a str> {
 }
 
 fn get_cell_content_as_string(nodes: &Vec<Node>) -> String {
-  get_cell_content(nodes).join(" ")
+  get_cell_content(nodes).join("")
 }
 
 impl WikiResource for PromotionalCodes {
