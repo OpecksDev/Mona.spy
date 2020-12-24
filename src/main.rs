@@ -1,26 +1,30 @@
-#[macro_use]
-extern crate rocket;
-extern crate rocket_contrib;
+use actix_web::{get, App, HttpResponse, HttpServer, Result};
 
-use rocket_contrib::json::Json;
 use std::env;
-use types::wiki::{PromotionalCodes, WikiError, WikiResource};
+use types::wiki::{PromotionalCodes, WikiResource};
 
 mod types;
 
 #[get("/promotionalCodes")]
-async fn promotional_codes() -> Json<Result<PromotionalCodes, WikiError>> {
-    Json(PromotionalCodes::get_wiki_resource().await)
+async fn promotional_codes() -> Result<HttpResponse> {
+  Ok(HttpResponse::Ok().json(PromotionalCodes::get_wiki_resource().await?))
 }
 
-#[launch]
-fn rocket() -> rocket::Rocket {
-    let port = env::var("PORT")
-        .map_or("8080".to_owned(), |x| x)
-        .parse::<u16>()
-        .unwrap();
+#[actix_web::main]
+async fn main() -> std::io::Result<()> {
+  #[cfg(debug_assertions)]
+  let ip = "127.0.0.1";
 
-    let figment = rocket::Config::figment().merge(("port", port));
-    // .merge(("address", "0.0.0.0"));
-    rocket::custom(figment).mount("/", routes![promotional_codes])
+  #[cfg(not(debug_assertions))]
+  let ip = "0.0.0.0";
+
+  let port = env::var("PORT").map_or("8080".to_owned(), |x| x);
+  let addr = ip.to_owned() + ":" + port.as_str();
+
+  println!("Running Server on {}", addr);
+
+  HttpServer::new(|| App::new().service(promotional_codes))
+    .bind(addr)?
+    .run()
+    .await
 }
