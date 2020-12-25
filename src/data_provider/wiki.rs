@@ -1,9 +1,8 @@
-extern crate parse_wiki_text;
-
+use super::persist;
 use actix_web::error;
-use async_trait::async_trait;
 use parse_wiki_text::Node;
 use serde::{Deserialize, Serialize};
+use serde_json::Value;
 use std::fmt;
 
 type Result<T> = std::result::Result<T, WikiError>;
@@ -19,12 +18,12 @@ impl fmt::Display for WikiError {
   }
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct PromotionalCodes {
   codes: Vec<PromotionalCode>,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, PartialEq, Eq, Clone)]
 pub struct PromotionalCode {
   code: Option<String>,
   server: Option<String>,
@@ -67,6 +66,19 @@ fn get_cell_content_as_string(nodes: &Vec<Node>) -> String {
 }
 
 impl WikiResource for PromotionalCodes {
+  fn empty(&self) -> bool {
+    self.codes.is_empty()
+  }
+
+  fn difference(&self, other: &Self) -> Self {
+    let mut difference: Vec<PromotionalCode> = Vec::new();
+
+    for code in &self.codes {
+      if !other.codes.contains(&code) { difference.push(code.to_owned()) }
+    }
+    PromotionalCodes {codes: difference}
+  }
+
   fn from(nodes: &Vec<Node>) -> Self {
     let mut after_available = false;
 
@@ -128,46 +140,74 @@ impl WikiResource for PromotionalCodes {
   }
 }
 
-#[async_trait]
-pub trait WikiResource: Sized {
+pub trait WikiResource: Sized + Serialize + serde::de::DeserializeOwned + std::fmt::Debug + Clone {
   fn from(nodes: &Vec<Node>) -> Self;
   fn get_title() -> &'static str;
+  fn difference(&self, other: &Self) -> Self;
+  fn empty(&self) -> bool;
+}
 
-  async fn get_wiki_resource() -> Result<Self> {
-    let base_path = "https://genshin-impact.fandom.com/api.php";
-    let query_string = [
-      ("action", "query"),
-      ("prop", "revisions"),
-      ("titles", Self::get_title()),
-      ("rvslots", "*"),
-      ("rvprop", "content"),
-      ("formatversion", "2"),
-      ("format", "json"),
-    ];
+async fn get_wiki_resource<T: WikiResource>() -> Option<T> {
+  persist::get::<T>().await
+}
 
-    let client = reqwest::Client::new();
-    let res = client
-      .get(base_path)
-      .query(&query_string)
-      .send()
-      .await
-      .map_err(|_| WikiError)?
-      .text()
-      .await
-      .map_err(|_| WikiError)?;
+pub async fn update_wiki_resource<T: WikiResource>() -> Result<T> {
+  let previous_resource = get_wiki_resource::<T>().await; 
 
-    let wiki_text = json::parse(res.as_str()).map_err(|_| WikiError)?["query"]["pages"][0]
-      ["revisions"][0]["slots"]["main"]["content"]
-      .dump()
+  let base_path = "https://genshin-impact.fandom.com/api.php";
+  let query_string = [
+    ("action", "query"),
+    ("prop", "revisions"),
+    ("titles", T::get_title()),
+    ("rvslots", "*"),
+    ("rvprop", "content"),
+    ("formatversion", "2"),
+    ("format", "json"),
+  ];
+
+  let client = reqwest::Client::new();
+  let res = client
+    .get(base_path)
+    .query(&query_string)
+    .send()
+    .await
+    .map_err(|_| WikiError)?
+    .text()
+    .await
+    .map_err(|_| WikiError)?;
+
+  let wiki_text_json = &serde_json::from_str::<Value>(res.as_str()).map_err(|_| WikiError)?
+    ["query"]["pages"][0]["revisions"][0]["slots"]["main"]["content"];
+
+  let wiki_text = match wiki_text_json {
+    Value::String(string) => string
       .replace(r#"\n"#, "\n")
       .replace(r#"\""#, "\"")
       .replace(r#"\'"#, "\'")
-      .replace(r#"\t"#, "\t");
+      .replace(r#"\t"#, "\t"),
+    _ => return Err(WikiError),
+  };
 
-    let result = create_configuration().parse(&wiki_text);
+  let result = create_configuration().parse(&wiki_text);
+  let result: T = T::from(&result.nodes);
+  persist::set(&result).await.map_err(|_| WikiError)?;
 
-    Ok(Self::from(&result.nodes))
+  wiki_resource_change_callback(previous_resource, &result);
+
+  Ok(result)
+}
+
+fn wiki_resource_change_callback<T: WikiResource>(previous: Option<T>, current: &T) {
+  let difference = match previous {
+    Some(previous) => current.difference(&previous),
+    None => current.to_owned(),
+  };
+
+  if difference.empty() {
+    return;
   }
+
+  println! ("Resource Updated, added {:?}", difference);
 }
 
 pub fn create_configuration() -> ::parse_wiki_text::Configuration {

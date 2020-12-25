@@ -1,13 +1,13 @@
+mod data_provider;
+
 use actix_web::{get, App, HttpResponse, HttpServer, Result};
-
+use data_provider::wiki::{PromotionalCodes, update_wiki_resource};
 use std::env;
-use types::wiki::{PromotionalCodes, WikiResource};
-
-mod types;
 
 #[get("/promotionalCodes")]
 async fn promotional_codes() -> Result<HttpResponse> {
-  Ok(HttpResponse::Ok().json(PromotionalCodes::get_wiki_resource().await?))
+  let new_resource = update_wiki_resource::<PromotionalCodes>().await?;
+  Ok(HttpResponse::Ok().json(new_resource))
 }
 
 #[actix_web::main]
