@@ -12,7 +12,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 #[derive(PartialEq, Eq, Hash, Serialize, Deserialize)]
 struct Subscrition {
-  address: String,
+  uri: String,
   token: Option<String>,
   expiration: u64,
 }
@@ -72,7 +72,7 @@ pub async fn notify<T: Serialize + Clone>(resource: &T) -> Result<()> {
 
     let client = reqwest::Client::new();
     let resp = client
-      .get(subscription.address.as_str())
+      .get(subscription.uri.as_str())
       .body(body)
       .send()
       .await;
@@ -99,7 +99,7 @@ pub async fn try_sync(subscribe_body: &SubscribeBody, expiration: u64) -> Result
   };
 
   reqwest::Client::new()
-    .get(subscribe_body.address.as_str())
+    .get(subscribe_body.uri.as_str())
     .body(body)
     .send()
     .await
@@ -131,7 +131,7 @@ pub async fn subscribe(body: SubscribeBody) -> Result<()> {
   };
 
   let id = body.id;
-  let address = body.address;
+  let uri = body.uri;
   let token = body.token;
 
   match subscriptions.get_mut(&id) {
@@ -139,14 +139,14 @@ pub async fn subscribe(body: SubscribeBody) -> Result<()> {
       subscriptions.insert(
         id.clone(),
         Subscrition {
-          address,
+          uri,
           expiration,
           token,
         },
       );
     }
     Some(subscription) => {
-      subscription.address = address;
+      subscription.uri = uri;
       subscription.token = token;
       subscription.expiration = expiration;
     }
