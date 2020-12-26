@@ -1,8 +1,11 @@
+use derive_more::{Display, Error};
 use redis::{AsyncCommands, RedisError};
 use serde::de::DeserializeOwned;
-use serde::{Serialize};
+use serde::Serialize;
 use serde_json::Error as JsonError;
 
+#[derive(Debug, Display, Error)]
+#[display(fmt = "DataPersistError")]
 pub enum DataPersistError {
   RedisError(RedisError),
   JsonError(JsonError),

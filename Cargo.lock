@@ -1292,6 +1292,7 @@ dependencies = [
  "actix-web",
  "async-std",
  "async-trait",
+ "derive_more",
  "parse_wiki_text",
  "redis",
  "reqwest",

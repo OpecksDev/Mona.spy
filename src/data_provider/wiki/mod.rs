@@ -1,7 +1,10 @@
+use super::subscription;
+pub mod promotional_codes;
+
 use super::persist;
 use actix_web::error;
 use parse_wiki_text::Node;
-use serde::{Deserialize, Serialize};
+use serde::Serialize;
 use serde_json::Value;
 use std::fmt;
 
@@ -15,32 +18,6 @@ impl error::ResponseError for WikiError {}
 impl fmt::Display for WikiError {
   fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
     write!(f, "Ocurred an Error during Wiki fetching")
-  }
-}
-
-#[derive(Debug, Serialize, Deserialize, Clone)]
-pub struct PromotionalCodes {
-  codes: Vec<PromotionalCode>,
-}
-
-#[derive(Debug, Serialize, Deserialize, PartialEq, Eq, Clone)]
-pub struct PromotionalCode {
-  code: Option<String>,
-  server: Option<String>,
-  reward: Option<String>,
-  discovered: Option<String>,
-  expires: Option<String>,
-}
-
-impl PromotionalCode {
-  fn new() -> PromotionalCode {
-    PromotionalCode {
-      code: None,
-      server: None,
-      reward: None,
-      discovered: None,
-      expires: None,
-    }
   }
 }
 
@@ -65,82 +42,9 @@ fn get_cell_content_as_string(nodes: &Vec<Node>) -> String {
   get_cell_content(nodes).join("")
 }
 
-impl WikiResource for PromotionalCodes {
-  fn empty(&self) -> bool {
-    self.codes.is_empty()
-  }
-
-  fn difference(&self, other: &Self) -> Self {
-    let mut difference: Vec<PromotionalCode> = Vec::new();
-
-    for code in &self.codes {
-      if !other.codes.contains(&code) { difference.push(code.to_owned()) }
-    }
-    PromotionalCodes {codes: difference}
-  }
-
-  fn from(nodes: &Vec<Node>) -> Self {
-    let mut after_available = false;
-
-    for node in nodes {
-      match node {
-        Node::Text { value, .. } => {
-          if value.contains("== Available ==") {
-            after_available = true;
-          }
-          if value.contains("== Expired ==") {
-            after_available = false;
-          }
-        }
-        Node::Table { rows, .. } => {
-          if !after_available {
-            continue;
-          }
-
-          let mut it = rows.iter();
-
-          let headers: Vec<String> = it
-            .next()
-            .unwrap()
-            .cells
-            .iter()
-            .map(|x| get_cell_content_as_string(&x.content))
-            .collect();
-
-          let codes = it
-            .map(|row| {
-              let mut code = PromotionalCode::new();
-
-              for (idx, cell) in row.cells.iter().enumerate() {
-                let value = get_cell_content_as_string(&cell.content);
-
-                match headers[idx].as_str() {
-                  "Code" => code.code = Some(value),
-                  "Server" => code.server = Some(value),
-                  "Reward" => code.reward = Some(value),
-                  "Discovered" => code.discovered = Some(value),
-                  "Expires" => code.expires = Some(value),
-                  _ => {}
-                }
-              }
-              code
-            })
-            .collect::<Vec<_>>();
-          return PromotionalCodes { codes };
-        }
-        _ => {}
-      }
-    }
-
-    return PromotionalCodes { codes: vec![] };
-  }
-
-  fn get_title() -> &'static str {
-    "Promotional_Codes"
-  }
-}
-
-pub trait WikiResource: Sized + Serialize + serde::de::DeserializeOwned + std::fmt::Debug + Clone {
+pub trait WikiResource:
+  Sized + Serialize + serde::de::DeserializeOwned + std::fmt::Debug + Clone
+{
   fn from(nodes: &Vec<Node>) -> Self;
   fn get_title() -> &'static str;
   fn difference(&self, other: &Self) -> Self;
@@ -152,7 +56,7 @@ async fn get_wiki_resource<T: WikiResource>() -> Option<T> {
 }
 
 pub async fn update_wiki_resource<T: WikiResource>() -> Result<T> {
-  let previous_resource = get_wiki_resource::<T>().await; 
+  let previous_resource = get_wiki_resource::<T>().await;
 
   let base_path = "https://genshin-impact.fandom.com/api.php";
   let query_string = [
@@ -192,12 +96,12 @@ pub async fn update_wiki_resource<T: WikiResource>() -> Result<T> {
   let result: T = T::from(&result.nodes);
   persist::set(&result).await.map_err(|_| WikiError)?;
 
-  wiki_resource_change_callback(previous_resource, &result);
+  wiki_resource_change_callback(previous_resource, &result).await;
 
   Ok(result)
 }
 
-fn wiki_resource_change_callback<T: WikiResource>(previous: Option<T>, current: &T) {
+async fn wiki_resource_change_callback<T: WikiResource>(previous: Option<T>, current: &T) {
   let difference = match previous {
     Some(previous) => current.difference(&previous),
     None => current.to_owned(),
@@ -207,7 +111,11 @@ fn wiki_resource_change_callback<T: WikiResource>(previous: Option<T>, current: 
     return;
   }
 
-  println! ("Resource Updated, added {:?}", difference);
+  println!("Resource Updated, added {:?}", difference);
+  match subscription::notify(&difference).await {
+    Ok(_) => {}
+    Err(err) => println!("{:?}", err),
+  };
 }
 
 pub fn create_configuration() -> ::parse_wiki_text::Configuration {
