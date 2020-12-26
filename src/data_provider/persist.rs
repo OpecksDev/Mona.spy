@@ -3,6 +3,7 @@ use redis::{AsyncCommands, RedisError};
 use serde::de::DeserializeOwned;
 use serde::Serialize;
 use serde_json::Error as JsonError;
+use std::env;
 
 #[derive(Debug, Display, Error)]
 #[display(fmt = "DataPersistError")]
@@ -14,7 +15,7 @@ pub enum DataPersistError {
 type Result<T> = std::result::Result<T, DataPersistError>;
 
 pub async fn get<T: DeserializeOwned>() -> Option<T> {
-  let client = redis::Client::open(env!("REDIS_URL")).ok()?;
+  let client = redis::Client::open(env::var("REDIS_URL").unwrap()).ok()?;
   let mut con = client.get_async_connection().await.ok()?;
 
   let json_data: String = con.get(std::any::type_name::<T>()).await.ok()?;
@@ -23,7 +24,7 @@ pub async fn get<T: DeserializeOwned>() -> Option<T> {
 }
 
 pub async fn set<T: Serialize>(data: &T) -> Result<()> {
-  let client = redis::Client::open(env!("REDIS_URL"))?;
+  let client = redis::Client::open(env::var("REDIS_URL").unwrap())?;
   let mut con = client.get_async_connection().await?;
 
   let json_data = serde_json::to_string(&data)?;
