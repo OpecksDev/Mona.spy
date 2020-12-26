@@ -1,7 +1,7 @@
 mod data_provider;
 mod interface;
 
-use actix_web::{get, web, App, HttpResponse, HttpServer};
+use actix_web::{get, post, web, App, HttpResponse, HttpServer};
 use data_provider::subscription;
 use data_provider::wiki::promotional_codes::PromotionalCodes;
 use data_provider::wiki::update_wiki_resource;
@@ -14,10 +14,11 @@ async fn promotional_codes() -> actix_web::Result<HttpResponse> {
   Ok(HttpResponse::Ok().json(new_resource))
 }
 
-#[get("/subscribe")]
+#[post("/subscribe")]
 async fn subscribe(
   body: web::Json<SubscribeBody>,
 ) -> Result<HttpResponse, subscription::SubscritionError> {
+  println!("{:?}", body);
   match subscription::subscribe(body.into_inner()).await {
     Ok(_) => Ok(HttpResponse::Ok().body("Subscribed!")),
     Err(err) => Err(err),

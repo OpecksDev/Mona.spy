@@ -1,7 +1,7 @@
 use serde::Deserialize;
 use serde::Serialize;
 
-#[derive(Serialize, Deserialize)]
+#[derive(Serialize, Deserialize, Debug)]
 pub struct SubscribeBody {
   pub id: String,              // Your channel ID.
   pub uri: String,             // Ex: "https://mydomain.com/notifications". Your receiving URL.

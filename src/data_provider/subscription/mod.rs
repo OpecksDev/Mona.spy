@@ -39,10 +39,14 @@ pub struct SyncResponse {
 }
 
 #[derive(Debug, Display, Error)]
-#[display(fmt = "SubscriptionError")]
 pub enum SubscritionError {
+  #[display(fmt = "Error: The provided URL didn't respond the request with the provided ID")]
   SyncError(reqwest::Error),
+  #[display(fmt = "Error: The id received from the URL is different from the one provived")]
+  DifferentIdSyncError,
+  #[display(fmt = "Error: The Subscription wasn't saved")]
   DataPersistError(persist::DataPersistError),
+  #[display(fmt = "Error: The provived body wasn't parsed")]
   JsonError(serde_json::Error),
 }
 
@@ -98,7 +102,7 @@ pub async fn try_sync(subscribe_body: &SubscribeBody, expiration: u64) -> Result
     Err(e) => return Err(SubscritionError::JsonError(e)),
   };
 
-  reqwest::Client::new()
+  let resp: SyncResponse = reqwest::Client::new()
     .get(subscribe_body.uri.as_str())
     .body(body)
     .send()
@@ -107,6 +111,10 @@ pub async fn try_sync(subscribe_body: &SubscribeBody, expiration: u64) -> Result
     .json()
     .await
     .map_err(|err| SubscritionError::SyncError(err))?;
+
+  if resp.id != subscribe_body.id {
+    return Err(SubscritionError::DifferentIdSyncError);
+  }
 
   Ok(())
 }
