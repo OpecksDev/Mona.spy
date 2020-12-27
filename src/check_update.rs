@@ -19,6 +19,6 @@ pub async fn call_every_hour(addr: String, paths: Vec<&'static str>) {
         Err(err) => println!("Error during hourly call: {:?}", err),
       }
     }
-    thread::sleep(Duration::from_secs(120));
+    thread::sleep(Duration::from_secs(3600));
   }
 }
