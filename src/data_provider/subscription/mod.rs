@@ -2,7 +2,6 @@ use super::persist;
 use crate::interface::SubscribeBody;
 
 use derive_more::{Display, Error};
-use reqwest::Body;
 use serde::Deserialize;
 use serde::Serialize;
 use std::cmp;
@@ -17,37 +16,28 @@ struct Subscrition {
   expiration: u64,
 }
 
-#[derive(PartialEq, Eq, Hash, Serialize, Deserialize)]
-struct PushBody<T> {
+#[derive(PartialEq, Eq, Hash, Serialize, Deserialize, Debug)]
+pub struct PushBody<T> {
   pub id: String,
   pub token: Option<String>,
   pub expiration: u64,
-  pub resource: T,
-  pub resource_type: String,
+  pub resource: Option<T>,
+  pub resource_type: Option<String>,
 }
 
-#[derive(Debug, Serialize)]
-pub struct SyncBody {
-  id: String,
-  token: Option<String>,
-  expiration: u64,
-}
-
-#[derive(Debug, Deserialize)]
-pub struct SyncResponse {
-  id: String,
+#[derive(Debug, Deserialize, Serialize)]
+pub struct PushResponse {
+  pub id: String,
 }
 
 #[derive(Debug, Display, Error)]
 pub enum SubscritionError {
   #[display(fmt = "Error: The provided URL didn't respond the request with the provided ID")]
   SyncError(reqwest::Error),
-  #[display(fmt = "Error: The id received from the URL is different from the one provived")]
+  #[display(fmt = "Error: The provided URL didn't respond the request with the provided ID")]
   DifferentIdSyncError,
   #[display(fmt = "Error: The Subscription wasn't saved")]
   DataPersistError(persist::DataPersistError),
-  #[display(fmt = "Error: The provived body wasn't parsed")]
-  JsonError(serde_json::Error),
 }
 
 impl actix_web::error::ResponseError for SubscritionError {}
@@ -64,20 +54,15 @@ pub async fn notify<T: Serialize + Clone>(resource: &T) -> Result<()> {
     let body = PushBody {
       id,
       token: subscription.token,
-      resource: resource.clone(),
-      resource_type: std::any::type_name::<T>().to_owned(),
+      resource: Some(resource.clone()),
+      resource_type: Some(std::any::type_name::<T>().to_owned()),
       expiration: subscription.expiration,
-    };
-
-    let body: Body = match serde_json::to_string(&body) {
-      Ok(data) => data.into(),
-      Err(e) => return Err(SubscritionError::JsonError(e)),
     };
 
     let client = reqwest::Client::new();
     let resp = client
-      .get(subscription.uri.as_str())
-      .body(body)
+      .post(subscription.uri.as_str())
+      .json(&body)
       .send()
       .await;
 
@@ -91,20 +76,17 @@ pub async fn notify<T: Serialize + Clone>(resource: &T) -> Result<()> {
 }
 
 pub async fn try_sync(subscribe_body: &SubscribeBody, expiration: u64) -> Result<()> {
-  let body = SyncBody {
+  let body = PushBody::<()> {
     id: subscribe_body.id.to_owned(),
     token: subscribe_body.token.to_owned(),
     expiration,
+    resource: None,
+    resource_type: None,
   };
 
-  let body: Body = match serde_json::to_string(&body) {
-    Ok(data) => data.into(),
-    Err(e) => return Err(SubscritionError::JsonError(e)),
-  };
-
-  let resp: SyncResponse = reqwest::Client::new()
-    .get(subscribe_body.uri.as_str())
-    .body(body)
+  let resp: PushResponse = reqwest::Client::new()
+    .post(subscribe_body.uri.as_str())
+    .json(&body)
     .send()
     .await
     .map_err(|err| SubscritionError::SyncError(err))?
