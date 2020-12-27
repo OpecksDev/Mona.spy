@@ -3,7 +3,6 @@ mod data_provider;
 mod interface;
 
 use actix_web::{error, get, post, web, App, HttpResponse, HttpServer};
-use check_update::call_every_hour;
 use data_provider::subscription;
 use data_provider::subscription::{PushBody, PushResponse};
 use data_provider::wiki::promotional_codes::PromotionalCodes;
@@ -64,11 +63,6 @@ async fn main() -> std::io::Result<()> {
 
   let port = env::var("PORT").map_or("8080".to_owned(), |x| x);
   let addr = ip.to_owned() + ":" + port.as_str();
-  let addr_copy = addr.clone();
-
-  actix_rt::spawn(async move {
-    call_every_hour(addr_copy, vec!["/promotional_codes"]).await;
-  });
 
   println!("Running Server on {}", addr);
 

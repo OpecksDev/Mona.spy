@@ -2,6 +2,7 @@ use reqwest;
 use std::thread;
 use std::time::Duration;
 
+#[allow(dead_code)] // Now the API is called from a free cron-job
 pub async fn call_every_hour(addr: String, paths: Vec<&'static str>) {
   let paths: Vec<_> = paths
     .into_iter()
