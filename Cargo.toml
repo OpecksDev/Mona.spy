@@ -9,6 +9,7 @@ edition = "2018"
 [dependencies]
 derive_more = "0.99.11"
 redis = { version = "0.18.0", features = ["async-std-comp"] }
+actix-rt = "1.1.1"
 actix-web = { version = "3" }
 reqwest = { version = "0.10", features = ["json"] }
 async-std = "1.8.0"

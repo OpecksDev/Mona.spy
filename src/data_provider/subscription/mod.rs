@@ -1,6 +1,7 @@
 use super::persist;
 use crate::interface::SubscribeBody;
 
+use actix_web::http::StatusCode;
 use derive_more::{Display, Error};
 use serde::Deserialize;
 use serde::Serialize;
@@ -40,11 +41,18 @@ pub enum SubscritionError {
   DataPersistError(persist::DataPersistError),
 }
 
-impl actix_web::error::ResponseError for SubscritionError {}
+impl actix_web::error::ResponseError for SubscritionError {
+  fn status_code(&self) -> StatusCode {
+    StatusCode::BAD_REQUEST
+  }
+}
 
 type Result<T> = std::result::Result<T, SubscritionError>;
 
-pub async fn notify<T: Serialize + Clone>(resource: &T) -> Result<()> {
+pub async fn notify<T: Serialize + Clone>(resource: &T) -> Result<()>
+where
+  T: std::fmt::Debug,
+{
   let subscriptions: HashMap<String, Subscrition> = match persist::get().await {
     Some(subscription) => subscription,
     None => return Ok(()),
@@ -67,8 +75,17 @@ pub async fn notify<T: Serialize + Clone>(resource: &T) -> Result<()> {
       .await;
 
     match resp {
-      Ok(_) => {}
-      err => println!("{:?}", err),
+      Ok(resp) => match resp.status() {
+        reqwest::StatusCode::OK => {}
+        code => println!(
+          ">>> PushNotificationError for {} <<<\nStatus Code {}\n{:?}\n>>> End <<<",
+          &subscription.uri, &code, &resp
+        ),
+      },
+      err => println!(
+        ">>> PushNotificationError for {} <<<\n{:?}\n>>> End <<<",
+        &subscription.uri, err
+      ),
     };
   }
 
